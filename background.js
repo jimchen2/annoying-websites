@@ -7,11 +7,14 @@ let workQueue = Promise.resolve();
 
 async function ensureDefaults() {
   const stored = await chrome.storage.sync.get(Config.KEYS);
-  const missing = {};
-  for (const key of Config.KEYS) {
-    if (stored[key] === undefined) missing[key] = Config.DEFAULTS[key];
+  if (!Array.isArray(stored.websites)) {
+    await chrome.storage.sync.set({ websites: Config.DEFAULTS.websites });
+    return;
   }
-  if (Object.keys(missing).length) await chrome.storage.sync.set(missing);
+  const normalized = Config.normalizeSettings(stored).websites;
+  if (JSON.stringify(normalized) !== JSON.stringify(stored.websites)) {
+    await chrome.storage.sync.set({ websites: normalized });
+  }
 }
 
 async function websiteAccess(settings) {
@@ -32,7 +35,7 @@ async function getStatus() {
 
 async function reconcile() {
   const status = await getStatus();
-  const matches = status.settings.enabled ? status.grantedWebsites : [];
+  const matches = [...new Set(status.grantedWebsites.map(Config.originForPattern))];
   const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [SCRIPT_ID] });
 
   if (!matches.length) {
@@ -58,12 +61,11 @@ async function reconcile() {
     }
   }
 
-  // Apply changes to already-open tabs as well. No broad "tabs" permission is
-  // needed: Chrome reveals URLs only on sites the extension can access.
+  // Apply changes to already-open tabs as well.
   const tabs = await chrome.tabs.query({});
   await Promise.allSettled(tabs.map(async tab => {
     if (typeof tab.id !== "number") return;
-    const eligible = tab.url && Config.matchesAny(matches, tab.url);
+    const eligible = tab.url && Config.matchesAny(status.grantedWebsites, tab.url);
     let notified = false;
     try {
       await chrome.tabs.sendMessage(tab.id, { type: "AW_REFRESH" }, { frameId: 0 });
@@ -77,8 +79,7 @@ async function reconcile() {
           world: "ISOLATED"
         });
       } catch {
-        // Restricted pages, navigations, discarded tabs, and closing tabs are
-        // expected. Registered scripts will run on the next supported load.
+        // Restricted pages, navigations, discarded tabs, and closing tabs.
       }
     }
   }));
@@ -115,11 +116,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return {
           ok: true,
           settings: status.settings,
-          allowed: status.settings.enabled && Config.matchesAny(status.grantedWebsites, url)
+          allowed: Config.matchesAny(status.grantedWebsites, url)
         };
       }
       case "AW_CLOSE_TAB": {
-        // Never accept a tab ID from a webpage. Only close the sender's own tab.
         if (typeof sender.tab?.id !== "number" || sender.frameId !== 0) throw new Error("Not a top-level website tab.");
         await chrome.tabs.remove(sender.tab.id);
         return { ok: true };
@@ -136,9 +136,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   };
   if (!["AW_GET_CONTEXT", "AW_CLOSE_TAB", "AW_STATUS", "AW_RECONCILE"].includes(message?.type)) return false;
   handle().then(sendResponse, error => sendResponse({ ok: false, error: error.message || String(error) }));
-  return true; // Keep the response channel open across asynchronous API calls.
+  return true;
 });
 
-// Also initialize after a worker wake/update. Persistent registrations survive
-// worker sleep; settings are only seeded when a key is actually absent.
 initialize().catch(error => console.error("[Annoy] Initialization failed:", error));

@@ -264,6 +264,7 @@
   document.addEventListener("visibilitychange", tick);
   window.addEventListener("pageshow", tick);
   window.addEventListener("popstate", refresh);
+  window.navigation?.addEventListener("navigatesuccess", refresh);
   globalThis.__annoyingWebsitesController = { refresh };
   refresh();
 })();
