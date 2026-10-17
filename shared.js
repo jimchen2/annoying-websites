@@ -87,11 +87,15 @@
     return patterns;
   }
 
-  function originForPattern(pattern) {
+  // Keep runtime permission requests aligned with optional_host_permissions in
+  // manifest.json. Chrome validates each requested pattern against the manifest,
+  // so request the declared HTTP and HTTPS patterns rather than a combined *://
+  // pattern (which can be rejected even though both schemes are declared).
+  function permissionOriginsForPattern(pattern) {
     const normalized = normalizePattern(pattern);
     const match = /^\*:\/\/([^/]+)\//.exec(normalized);
     if (!match) throw new Error("Invalid website pattern.");
-    return `*://${match[1]}/*`;
+    return [`http://${match[1]}/*`, `https://${match[1]}/*`];
   }
 
   function matchesUrl(pattern, input) {
@@ -148,7 +152,7 @@
 
   globalThis.AnnoyConfig = Object.freeze({
     DEFAULTS, KEYS, MAX_WEBSITES, MAX_WEBSITE_BYTES,
-    normalizePattern, parseWebsites, originForPattern, matchesUrl, matchesAny,
+    normalizePattern, parseWebsites, permissionOriginsForPattern, matchesUrl, matchesAny,
     normalizeSettings, readSettings
   });
 })();

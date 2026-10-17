@@ -20,7 +20,7 @@ async function ensureDefaults() {
 async function websiteAccess(settings) {
   const result = await Promise.all(settings.websites.map(async pattern => ({
     pattern,
-    granted: await chrome.permissions.contains({ origins: [Config.originForPattern(pattern)] })
+    granted: await chrome.permissions.contains({ origins: Config.permissionOriginsForPattern(pattern) })
   })));
   return {
     grantedWebsites: result.filter(item => item.granted).map(item => item.pattern),
@@ -35,7 +35,7 @@ async function getStatus() {
 
 async function reconcile() {
   const status = await getStatus();
-  const matches = [...new Set(status.grantedWebsites.map(Config.originForPattern))];
+  const matches = [...new Set(status.grantedWebsites.flatMap(Config.permissionOriginsForPattern))];
   const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [SCRIPT_ID] });
 
   if (!matches.length) {
