@@ -102,7 +102,7 @@
     host.style.fontFamily = "Arial, sans-serif";
     host.style.textAlign = "center";
 
-    const message = element("h1", "", "Hey, You Are Not Supposed to Do That!!! :( :( :( Do You Really Want to Continue to Website?");
+    const message = element("h1", "", "Hey, You Are Not Supposed to Do That!!! :( :( :( Do You Really Want to Continue?");
     message.style.marginBottom = "20px";
     message.style.marginTop = "0";
     message.style.fontSize = "22px";
