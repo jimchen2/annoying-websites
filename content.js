@@ -29,17 +29,19 @@
   }
 
   function lockScrolling() {
-    lockedElements = [document.documentElement, document.body].filter(Boolean).map(element => {
+    lockedElements = [document.documentElement, document.body].filter(Boolean).map((element) => {
       const snapshot = {
         element,
         value: element.style.getPropertyValue("overflow"),
-        priority: element.style.getPropertyPriority("overflow")
+        priority: element.style.getPropertyPriority("overflow"),
       };
       element.style.setProperty("overflow", "hidden", "important");
       return snapshot;
     });
     // Also ensure body overflow hidden like the primitive userscript
-    try { document.body.style.overflow = "hidden"; } catch {}
+    try {
+      document.body.style.overflow = "hidden";
+    } catch {}
   }
 
   function removeOverlay() {
@@ -52,7 +54,9 @@
     }
     lockedElements = [];
     if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
-      try { previousFocus.focus({ preventScroll: true }); } catch {}
+      try {
+        previousFocus.focus({ preventScroll: true });
+      } catch {}
     }
     previousFocus = null;
   }
@@ -178,7 +182,9 @@
     if (display) display.textContent = "Time's up.";
     if (actions) actions.style.display = "flex";
     if (closeButton && document.visibilityState === "visible") {
-      try { closeButton.focus({ preventScroll: true }); } catch {}
+      try {
+        closeButton.focus({ preventScroll: true });
+      } catch {}
     }
   }
 
@@ -253,7 +259,7 @@
     return false;
   });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync" && Config.KEYS.some(key => key in changes)) refresh();
+    if (area === "sync" && Config.KEYS.some((key) => key in changes)) refresh();
   });
   document.addEventListener("visibilitychange", tick);
   window.addEventListener("pageshow", tick);
