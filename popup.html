@@ -1,24 +1,33 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
   <title>Annoying Websites</title>
-  <link rel="stylesheet" href="ui.css">
-  <script src="shared.js" defer></script>
-  <script src="popup.js" defer></script>
+  <link rel="stylesheet" href="popup.css">
 </head>
-<body class="popup-page">
-  <main class="popup-shell">
-    <header class="popup-header"><div class="brand-lockup"><img src="icons/icon48.png" width="34" height="34" alt=""><div><div class="brand-name">Annoying Websites</div><div class="brand-caption">Browse with intention.</div></div></div></header>
-    <section class="popup-toggle-row"><div><h1>Reminders <span id="enabled-label">on</span></h1><p id="enabled-help">A pause before you continue.</p></div><label class="switch"><input id="popup-enabled" type="checkbox" aria-label="Enable reminders" disabled><span class="switch-track"></span></label></section>
-    <section class="current-site"><div class="eyebrow">THIS TAB</div><div id="current-host" class="current-host">Checking…</div><div id="current-status" class="site-status">Loading settings</div></section>
-    <section class="popup-stats" aria-label="Timer settings"><div><span id="interval-value" class="stat-value">—</span><span class="stat-label">minutes of browsing</span></div><div><span id="wait-value" class="stat-value">—</span><span class="stat-label">seconds to pause</span></div></section>
-    <div class="popup-meta"><span id="popup-site-count">— websites</span><span class="sync-pill small"><span class="sync-dot"></span>Synced settings</span></div>
-    <p id="popup-notice" class="popup-notice" role="status" hidden></p>
-    <button id="open-settings" class="button button-primary popup-settings" type="button">Websites &amp; settings <span aria-hidden="true">↗</span></button>
-    <p class="popup-footer">The first pause starts when a matching page loads.</p>
-  </main>
+<body>
+  <div class="container">
+    <div id="permissionNotice" class="notice-box" style="display: none;">
+      <span>Site permission needed</span>
+      <button id="grantBtn" type="button">Allow</button>
+    </div>
+
+    <fieldset>
+      <legend>Add Website</legend>
+      <form id="addForm" class="add-row">
+        <input type="text" id="websiteInput" placeholder="example.com/1" spellcheck="false" autocomplete="off" />
+        <button id="addBtn" type="submit">Add</button>
+      </form>
+      <div class="hint">Prefix only: <code>example.com/1</code> &rarr; <code>*://example.com/1*</code></div>
+      <div id="errorBox" style="display: none;"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Blocked Websites</legend>
+      <div id="websiteList" class="website-list"></div>
+    </fieldset>
+  </div>
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>
