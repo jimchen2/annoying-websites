@@ -1,163 +1,171 @@
-/* Shared configuration and Chrome match-pattern helpers. No remote code. */
+/* Shared rule helpers: turn what the user types into a rule, match URLs
+   against rules, and describe the same rules to Chrome.
+
+   Loaded by the service worker (importScripts) and by the extension pages.
+   No DOM here, and chrome.* is only touched inside functions. */
 (() => {
   "use strict";
 
-  const DEFAULTS = Object.freeze({
-    enabled: true,
-    intervalMinutes: 1.5,
-    waitSeconds: 30,
-    showTimerInConsole: true,
-    websites: Object.freeze([
-      "*://*.1point3acres.com/*",
-      "*://*.huaren.us/*",
-      "*://*.baidu.com/*",
-      "*://*.bilibili.com/*",
-      "*://*.zombsroyale.io/*",
-      "*://llm.jimchen.me/random*",
-      "https://aistudio.google.com/*"
-    ])
-  });
-  const KEYS = Object.keys(DEFAULTS);
-  const MAX_WEBSITES = 100;
-  const MAX_WEBSITE_BYTES = 7500; // Leave room below sync's 8 KiB/item limit.
+  const STORAGE_KEYS = ["rules", "enabled"];
+  const MAX_RULES = 100;
+  const MAX_RULE_BYTES = 4000; // Chrome Sync allows 8 KiB per item.
+  const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-  function normalizePattern(input) {
-    let value = String(input).trim();
-    if (!value) throw new Error("Enter a website or Chrome match pattern.");
-    if (/\s/.test(value)) throw new Error(`Spaces are not allowed: ${value}`);
-
-    // A bare domain includes its subdomains, just like the original userscript.
-    if (!value.includes("://")) {
-      if (/[/:?#]/.test(value)) {
-        throw new Error(`Use a full pattern for a path, for example *://example.com/path*: ${value}`);
-      }
-      const host = value.toLowerCase();
-      const wildcard = host === "*" || host.startsWith("*.") || host === "localhost" || /^\d+(\.\d+){3}$/.test(host);
-      value = `*://${wildcard ? host : `*.${host}`}/*`;
-    } else if (/^(\*|https?):\/\/[^/]+$/i.test(value)) {
-      value += "/*";
-    }
-
-    const match = /^(\*|https?):\/\/([^/]+)(\/.*)$/i.exec(value);
-    if (!match) throw new Error(`Use http://, https://, or *:// followed by a host and path: ${value}`);
-    const scheme = match[1].toLowerCase();
-    const host = match[2].toLowerCase();
-    const path = match[3];
-    const domain = host.startsWith("*.") ? host.slice(2) : host;
-    const labels = domain.split(".");
-    const validDomain = domain.length <= 253 && labels.every(label =>
-      label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)
-    );
-    if (host !== "*" && !validDomain) {
-      throw new Error(`Invalid host in ${value}. Use an ASCII domain (or punycode), without ports.`);
-    }
-    if (path.includes("#")) throw new Error(`URL fragments are not supported in match patterns: ${value}`);
-    if (value.length > 1000) throw new Error("A website pattern is too long (maximum 1,000 characters).");
-    return `${scheme}://${host}${path}`;
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
-  function parseWebsites(text) {
-    const lines = String(text).split(/\r?\n/);
-    const patterns = [];
-    lines.forEach((line, index) => {
-      const value = line.trim();
-      if (!value || value.startsWith("#")) return;
+  function isValidHost(host) {
+    if (!host || host.length > 253) return false;
+    return host.split(".").every(label => label.length <= 63 && HOST_LABEL.test(label));
+  }
+
+  // Rules are always shown as *://example.com/1 (or https://… for one scheme).
+  function formatRule(rule) {
+    return `${rule.scheme}://${rule.host}${rule.path}`;
+  }
+
+  /* Turns user input into a rule.
+     "example.com/1"  -> { scheme: "*", host: "example.com", path: "/1" }
+     "https://a.com"  -> { scheme: "https", host: "a.com", path: "" }
+     Rules match a domain, its subdomains, and a path prefix. */
+  function normalizeRule(input) {
+    let value = String(input ?? "").trim();
+    if (!value) throw new Error("Enter a prefix, for example example.com/1.");
+    if (/\s/.test(value)) throw new Error("Spaces are not allowed in a prefix.");
+
+    let scheme = "*";
+    const schemeMatch = /^(\*|https?):\/\//i.exec(value);
+    if (schemeMatch) {
+      scheme = schemeMatch[1].toLowerCase();
+      value = value.slice(schemeMatch[0].length);
+    }
+
+    // A trailing * means the same thing as a prefix, so drop it.
+    value = value.replace(/\*+$/, "");
+    if (!value) throw new Error("Enter a prefix, for example example.com/1.");
+
+    const slash = value.indexOf("/");
+    let host = (slash === -1 ? value : value.slice(0, slash)).toLowerCase();
+    let path = slash === -1 ? "" : value.slice(slash);
+
+    if (host.startsWith("*.")) host = host.slice(2);
+    if (host.includes("*")) throw new Error("A * is only allowed at the start of the domain.");
+    if (!isValidHost(host)) throw new Error(`"${host}" is not a valid domain name.`);
+    if (path.includes("#")) throw new Error("A # fragment is not part of a page address.");
+    path = path.replace(/\*+$/, "");
+    if (path === "/") path = "";
+    if (path && !path.startsWith("/")) throw new Error("A path has to start with /.");
+
+    return { scheme, host, path, text: formatRule({ scheme, host, path }) };
+  }
+
+  // Reads stored rules and quietly drops anything that is no longer valid.
+  function parseRules(list) {
+    const rules = [];
+    for (const value of Array.isArray(list) ? list : []) {
       try {
-        const pattern = normalizePattern(value);
-        if (!patterns.includes(pattern)) patterns.push(pattern);
-      } catch (error) {
-        throw new Error(`Line ${index + 1}: ${error.message}`);
-      }
-    });
-    if (patterns.length > MAX_WEBSITES) throw new Error(`Use at most ${MAX_WEBSITES} website patterns.`);
-    const bytes = new TextEncoder().encode(JSON.stringify({ websites: patterns })).length;
-    if (bytes > MAX_WEBSITE_BYTES) throw new Error("The website list is too large for Chrome Sync. Shorten the list or its patterns.");
-    return patterns;
-  }
-
-  function originForPattern(pattern) {
-    const match = /^(\*|https?):\/\/([^/]+)\//.exec(pattern);
-    if (!match) throw new Error("Invalid website pattern.");
-    return `${match[1]}://${match[2]}/*`;
-  }
-
-  function matchesUrl(pattern, input) {
-    try {
-      const url = new URL(input);
-      if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-      const [, scheme, host, path] = /^(\*|https?):\/\/([^/]+)(\/.*)$/.exec(pattern);
-      if (scheme !== "*" && `${scheme}:` !== url.protocol) return false;
-      if (host !== "*") {
-        const domain = host.startsWith("*.") ? host.slice(2) : host;
-        if (host.startsWith("*.")) {
-          if (url.hostname !== domain && !url.hostname.endsWith(`.${domain}`)) return false;
-        } else if (url.hostname !== host) return false;
-      }
-      const regex = path.split("*").map(piece => piece.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-      return new RegExp(`^${regex}$`).test(url.pathname + url.search);
-    } catch {
-      return false;
+        const rule = normalizeRule(value);
+        if (!rules.some(item => item.text === rule.text)) rules.push(rule);
+      } catch { /* Ignore invalid entries rather than blocking an unintended site. */ }
     }
+    return rules.slice(0, MAX_RULES);
   }
 
-  function matchesAny(patterns, url) {
-    return patterns.some(pattern => matchesUrl(pattern, url));
+  /* Does a URL match a rule? The domain must be the rule's domain or one of
+     its subdomains, and the path has to start with the rule's path. */
+  function matchesRule(rule, url) {
+    let target;
+    try { target = new URL(url); } catch { return false; }
+    if (target.protocol !== "http:" && target.protocol !== "https:") return false;
+    if (rule.scheme === "http" && target.protocol !== "http:") return false;
+    if (rule.scheme === "https" && target.protocol !== "https:") return false;
+    const host = target.hostname.toLowerCase();
+    if (host !== rule.host && !host.endsWith(`.${rule.host}`)) return false;
+    if (rule.path && !`${target.pathname}${target.search}`.startsWith(rule.path)) return false;
+    return true;
   }
 
-  function normalizeSettings(raw = {}) {
-    let websites;
-    try {
-      websites = Array.isArray(raw.websites)
-        ? parseWebsites(raw.websites.join("\n"))
-        : [...DEFAULTS.websites];
-    } catch {
-      // Keep any valid entries if externally edited sync data is malformed.
-      websites = [];
-      if (Array.isArray(raw.websites)) {
-        for (const value of raw.websites.slice(0, MAX_WEBSITES)) {
-          try {
-            const pattern = normalizePattern(value);
-            if (!websites.includes(pattern)) websites.push(pattern);
-          } catch { /* Ignore invalid entries rather than running on an unintended site. */ }
-        }
-      }
-    }
-    const interval = Number(raw.intervalMinutes);
-    const wait = Number(raw.waitSeconds);
+  function matchesAny(rules, url) {
+    return rules.some(rule => matchesRule(rule, url));
+  }
+
+  /* The same rule as a Chrome filter: the scheme, the domain with optional
+     subdomains, an optional port, and the path prefix. */
+  function regexForRule(rule) {
+    const scheme = rule.scheme === "*" ? "https?" : rule.scheme;
+    const host = `(?:[^/?#]+\\.)?${escapeRegExp(rule.host)}`;
+    const port = "(?::\\d+)?";
+    const path = rule.path ? escapeRegExp(rule.path) : "(?:/|$)";
+    return `^${scheme}://${host}${port}${path}`;
+  }
+
+  function dnrRuleForRule(rule, id) {
     return {
-      enabled: typeof raw.enabled === "boolean" ? raw.enabled : DEFAULTS.enabled,
-      intervalMinutes: Number.isFinite(interval) && interval >= 0.1 && interval <= 1440 ? interval : DEFAULTS.intervalMinutes,
-      waitSeconds: Number.isInteger(wait) && wait >= 1 && wait <= 3600 ? wait : DEFAULTS.waitSeconds,
-      showTimerInConsole: typeof raw.showTimerInConsole === "boolean" ? raw.showTimerInConsole : DEFAULTS.showTimerInConsole,
-      websites
+      id,
+      priority: 1,
+      action: { type: "redirect", redirect: { extensionPath: "blocked.html" } },
+      condition: {
+        regexFilter: regexForRule(rule),
+        resourceTypes: ["main_frame"]
+      }
     };
   }
 
-  async function readSettings() {
-    return normalizeSettings(await chrome.storage.sync.get(KEYS));
+  // Host permissions Chrome needs before it can block a rule.
+  function originsForRule(rule) {
+    const schemes = rule.scheme === "*" ? ["http", "https"] : [rule.scheme];
+    const origins = [];
+    for (const scheme of schemes) {
+      origins.push(`${scheme}://${rule.host}/*`);
+      origins.push(`${scheme}://*.${rule.host}/*`);
+    }
+    return origins;
   }
 
-  function validateForm({ enabled, intervalMinutes, waitSeconds, showTimerInConsole, websitesText }) {
-    const interval = Number(intervalMinutes);
-    const wait = Number(waitSeconds);
-    if (!Number.isFinite(interval) || interval < 0.1 || interval > 1440) {
-      throw new Error("The browsing interval must be between 0.1 and 1,440 minutes.");
-    }
-    if (!Number.isInteger(wait) || wait < 1 || wait > 3600) {
-      throw new Error("The pause must be a whole number between 1 and 3,600 seconds.");
-    }
+  async function hasAccess(rule) {
+    return chrome.permissions.contains({ origins: originsForRule(rule) });
+  }
+
+  async function readState() {
+    const stored = await chrome.storage.sync.get(STORAGE_KEYS);
     return {
-      enabled: Boolean(enabled),
-      intervalMinutes: interval,
-      waitSeconds: wait,
-      showTimerInConsole: Boolean(showTimerInConsole),
-      websites: parseWebsites(websitesText)
+      enabled: stored.enabled !== false,
+      rules: parseRules(stored.rules)
     };
   }
 
-  globalThis.AnnoyConfig = Object.freeze({
-    DEFAULTS, KEYS, MAX_WEBSITES, MAX_WEBSITE_BYTES,
-    normalizePattern, parseWebsites, originForPattern, matchesUrl, matchesAny,
-    normalizeSettings, readSettings, validateForm
+  async function saveRules(texts) {
+    const rules = [];
+    for (const text of texts) {
+      let rule;
+      try { rule = normalizeRule(text); } catch { throw new Error(`"${text}" is not a valid rule.`); }
+      if (!rules.some(item => item.text === rule.text)) rules.push(rule);
+    }
+    if (rules.length > MAX_RULES) throw new Error(`Keep the list to ${MAX_RULES} rules.`);
+    const bytes = new TextEncoder().encode(JSON.stringify(rules.map(rule => rule.text))).length;
+    if (bytes > MAX_RULE_BYTES) throw new Error("The list is too long for Chrome Sync. Remove a rule or two.");
+    await chrome.storage.sync.set({ rules: rules.map(rule => rule.text) });
+    return rules;
+  }
+
+  async function saveEnabled(enabled) {
+    await chrome.storage.sync.set({ enabled: Boolean(enabled) });
+  }
+
+  function blockedPageUrl(url) {
+    const base = chrome.runtime.getURL("blocked.html");
+    return url ? `${base}?u=${encodeURIComponent(url)}` : base;
+  }
+
+  function blockedInfoKey(tabId) {
+    return `blocked:${tabId}`;
+  }
+
+  globalThis.BlockRules = Object.freeze({
+    STORAGE_KEYS, MAX_RULES, MAX_RULE_BYTES,
+    escapeRegExp, isValidHost, formatRule, normalizeRule, parseRules,
+    matchesRule, matchesAny, regexForRule, dnrRuleForRule, originsForRule, hasAccess,
+    readState, saveRules, saveEnabled, blockedPageUrl, blockedInfoKey
   });
 })();

@@ -1,144 +1,127 @@
-/* Manifest V3 service worker. Timers live in the page, not in this worker. */
+/* Manifest V3 service worker. Keeps Chrome's blocking rules in sync with the
+   list the user typed, and remembers which address a blocked tab was on. */
 "use strict";
 importScripts("shared.js");
-const Config = globalThis.AnnoyConfig;
-const SCRIPT_ID = "annoying-websites-content-v2";
-let workQueue = Promise.resolve();
+const Rules = globalThis.BlockRules;
 
-async function ensureDefaults() {
-  const stored = await chrome.storage.sync.get(Config.KEYS);
-  const missing = {};
-  for (const key of Config.KEYS) {
-    if (stored[key] === undefined) missing[key] = Config.DEFAULTS[key];
-  }
-  if (Object.keys(missing).length) await chrome.storage.sync.set(missing);
-}
+let queue = Promise.resolve();
 
-async function websiteAccess(settings) {
-  const result = await Promise.all(settings.websites.map(async pattern => ({
-    pattern,
-    granted: await chrome.permissions.contains({ origins: [Config.originForPattern(pattern)] })
-  })));
-  return {
-    grantedWebsites: result.filter(item => item.granted).map(item => item.pattern),
-    missingWebsites: result.filter(item => !item.granted).map(item => item.pattern)
-  };
-}
-
-async function getStatus() {
-  const settings = await Config.readSettings();
-  return { settings, ...await websiteAccess(settings) };
-}
-
-async function reconcile() {
-  const status = await getStatus();
-  const matches = status.settings.enabled ? status.grantedWebsites : [];
-  const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [SCRIPT_ID] });
-
-  if (!matches.length) {
-    if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] });
-  } else {
-    const script = {
-      id: SCRIPT_ID,
-      matches,
-      js: ["shared.js", "content.js"],
-      allFrames: false,
-      runAt: "document_end",
-      persistAcrossSessions: true,
-      world: "ISOLATED"
-    };
-    if (!registered.length) {
-      await chrome.scripting.registerContentScripts([script]);
-    } else {
-      const current = registered[0];
-      const changed = JSON.stringify([...current.matches].sort()) !== JSON.stringify([...matches].sort()) ||
-        JSON.stringify(current.js) !== JSON.stringify(script.js) ||
-        ["allFrames", "runAt", "persistAcrossSessions", "world"].some(key => current[key] !== script[key]);
-      if (changed) await chrome.scripting.updateContentScripts([script]);
-    }
-  }
-
-  // Apply changes to already-open tabs as well. No broad "tabs" permission is
-  // needed: Chrome reveals URLs only on sites the extension can access.
-  const tabs = await chrome.tabs.query({});
-  await Promise.allSettled(tabs.map(async tab => {
-    if (typeof tab.id !== "number") return;
-    const eligible = tab.url && Config.matchesAny(matches, tab.url);
-    let notified = false;
-    try {
-      await chrome.tabs.sendMessage(tab.id, { type: "AW_REFRESH" }, { frameId: 0 });
-      notified = true;
-    } catch { /* No content script in this tab yet. */ }
-    if (eligible && !notified) {
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id, allFrames: false },
-          files: ["shared.js", "content.js"],
-          world: "ISOLATED"
-        });
-      } catch {
-        // Restricted pages, navigations, discarded tabs, and closing tabs are
-        // expected. Registered scripts will run on the next supported load.
-      }
-    }
-  }));
-  return status;
-}
-
-function scheduleReconcile() {
-  const next = workQueue.catch(() => {}).then(reconcile);
-  workQueue = next;
-  next.catch(error => console.error("[Annoy] Could not apply settings:", error));
+function enqueue(task) {
+  const next = queue.catch(() => {}).then(task);
+  queue = next;
   return next;
 }
 
-async function initialize() {
-  await ensureDefaults();
-  await scheduleReconcile();
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/* Replaces Chrome's dynamic rules with the current list. Rule ids are simply
+   the position in the list, so a changed list is always a fresh set. */
+async function applyRules() {
+  const state = await Rules.readState();
+  const existing = await chrome.declarativeNetRequest.getDynamicRules();
+  const removeRuleIds = existing.map(rule => rule.id);
+  const addRules = state.enabled
+    ? state.rules.map((rule, index) => Rules.dnrRuleForRule(rule, index + 1))
+    : [];
+  await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
+  return state;
 }
 
-chrome.runtime.onInstalled.addListener(() => { initialize().catch(console.error); });
-chrome.runtime.onStartup.addListener(() => { initialize().catch(console.error); });
+/* Sends tabs that are already open on a blocked address to the blocked page.
+   Chrome only hands over the address of sites the extension may access, and
+   those are exactly the sites the user asked to block. */
+async function blockOpenTabs() {
+  const state = await Rules.readState();
+  if (!state.enabled || !state.rules.length) return;
+  const tabs = await chrome.tabs.query({});
+  await Promise.allSettled(tabs.map(async tab => {
+    if (typeof tab.id !== "number" || !tab.url) return;
+    const match = state.rules.find(rule => Rules.matchesRule(rule, tab.url));
+    if (!match) return;
+    await chrome.tabs.update(tab.id, { url: Rules.blockedPageUrl(tab.url) });
+  }));
+}
+
+async function reconcile({ checkTabs = false } = {}) {
+  const state = await applyRules();
+  if (checkTabs) await blockOpenTabs();
+  return state;
+}
+
+/* Chrome redirects a blocked address to blocked.html before it loads. The
+   address is not part of that redirect, so remember it here instead. */
+async function rememberBlocked(tabId, url, match) {
+  try {
+    await chrome.storage.session.set({ [Rules.blockedInfoKey(tabId)]: { url, rule: match.text } });
+  } catch { /* Session storage is best effort. */ }
+}
+
+async function forgetBlocked(tabId) {
+  try { await chrome.storage.session.remove(Rules.blockedInfoKey(tabId)); }
+  catch { /* Session storage is best effort. */ }
+}
+
+/* Safety net. Chrome's own rule should stop the page before it loads, but if
+   the address slipped through, send the tab to the blocked page by hand. */
+async function catchSlippedThrough(tabId, url) {
+  await sleep(300);
+  let tab;
+  try { tab = await chrome.tabs.get(tabId); } catch { return; }
+  if (!tab || tab.url !== url) return; // Chrome already redirected the tab.
+  try { await chrome.tabs.update(tabId, { url: Rules.blockedPageUrl(url) }); }
+  catch { /* The tab may be gone. */ }
+}
+
+async function handleNavigation(tabId, url) {
+  const state = await Rules.readState();
+  if (!state.enabled || !state.rules.length) {
+    await forgetBlocked(tabId);
+    return;
+  }
+  const match = state.rules.find(rule => Rules.matchesRule(rule, url));
+  if (!match) {
+    await forgetBlocked(tabId);
+    return;
+  }
+  await rememberBlocked(tabId, url, match);
+  await catchSlippedThrough(tabId, url);
+}
+
+chrome.runtime.onInstalled.addListener(() => { enqueue(reconcile).catch(console.error); });
+chrome.runtime.onStartup.addListener(() => { enqueue(reconcile).catch(console.error); });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync" && Config.KEYS.some(key => key in changes)) scheduleReconcile();
+  if (area !== "sync") return;
+  if (!Rules.STORAGE_KEYS.some(key => key in changes)) return;
+  enqueue(() => reconcile({ checkTabs: true })).catch(console.error);
 });
-chrome.permissions.onAdded.addListener(() => { scheduleReconcile(); });
-chrome.permissions.onRemoved.addListener(() => { scheduleReconcile(); });
+chrome.permissions.onAdded.addListener(() => { enqueue(reconcile).catch(console.error); });
+chrome.permissions.onRemoved.addListener(() => { enqueue(reconcile).catch(console.error); });
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  const url = changeInfo.url;
+  if (!url || !/^https?:/i.test(url)) return;
+  handleNavigation(tabId, url).catch(console.error);
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handle = async () => {
     switch (message?.type) {
-      case "AW_GET_CONTEXT": {
-        if (typeof sender.tab?.id !== "number" || sender.frameId !== 0) throw new Error("Not a top-level website tab.");
-        const status = await getStatus();
-        const url = sender.url || "";
-        return {
-          ok: true,
-          settings: status.settings,
-          allowed: status.settings.enabled && Config.matchesAny(status.grantedWebsites, url)
-        };
+      case "AW_STATE": {
+        const state = await Rules.readState();
+        return { ok: true, enabled: state.enabled, rules: state.rules.map(rule => rule.text) };
       }
-      case "AW_CLOSE_TAB": {
-        // Never accept a tab ID from a webpage. Only close the sender's own tab.
-        if (typeof sender.tab?.id !== "number" || sender.frameId !== 0) throw new Error("Not a top-level website tab.");
-        await chrome.tabs.remove(sender.tab.id);
-        return { ok: true };
+      case "AW_RECONCILE": {
+        const state = await enqueue(() => reconcile({ checkTabs: true }));
+        return { ok: true, enabled: state.enabled, rules: state.rules.map(rule => rule.text) };
       }
-      case "AW_STATUS":
-        if (!sender.url?.startsWith(chrome.runtime.getURL(""))) throw new Error("Only the extension UI can request this action.");
-        return { ok: true, ...await getStatus() };
-      case "AW_RECONCILE":
-        if (!sender.url?.startsWith(chrome.runtime.getURL(""))) throw new Error("Only the extension UI can request this action.");
-        return { ok: true, ...await scheduleReconcile() };
       default:
         return null;
     }
   };
-  if (!["AW_GET_CONTEXT", "AW_CLOSE_TAB", "AW_STATUS", "AW_RECONCILE"].includes(message?.type)) return false;
+  if (!["AW_STATE", "AW_RECONCILE"].includes(message?.type)) return false;
   handle().then(sendResponse, error => sendResponse({ ok: false, error: error.message || String(error) }));
   return true; // Keep the response channel open across asynchronous API calls.
 });
 
-// Also initialize after a worker wake/update. Persistent registrations survive
-// worker sleep; settings are only seeded when a key is actually absent.
-initialize().catch(error => console.error("[Annoy] Initialization failed:", error));
+// Also apply the list after a worker wake, so a restarted browser keeps blocking.
+enqueue(reconcile).catch(error => console.error("[Annoy] Could not apply the block list:", error));

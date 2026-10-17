@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Blocked · Annoying Websites</title>
+  <link rel="stylesheet" href="ui.css">
+  <script src="shared.js" defer></script>
+  <script src="blocked.js" defer></script>
+</head>
+<body class="blocked-page">
+  <main class="blocked-card">
+    <img src="icons/icon48.png" width="46" height="46" alt="">
+    <h1>This page is blocked</h1>
+    <p id="blocked-url" class="blocked-url" hidden></p>
+    <p id="blocked-rule" class="blocked-rule" hidden></p>
+    <p id="blocked-note" class="blocked-note">It matches one of the prefixes in your list.</p>
+    <ul id="rule-choices" class="rule-choices" hidden></ul>
+    <div class="blocked-actions">
+      <button id="go-back" class="button primary" type="button">Go back</button>
+      <button id="allow-site" class="button quiet" type="button" hidden>Allow this site</button>
+    </div>
+    <p class="blocked-hint">Manage the list in the extension popup or on the blocked sites page.</p>
+  </main>
+</body>
+</html>

@@ -1,22 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Annoying Websites",
-  "version": "2.0.0",
-  "description": "Pause before browsing distracting websites. Sync your website list and timer settings with Chrome.",
+  "version": "3.0.0",
+  "description": "Block distracting websites with simple URL prefixes. Add example.com/1 and everything that starts with it is blocked.",
   "author": "Jim Chen",
   "minimum_chrome_version": "109",
   "permissions": [
     "storage",
-    "scripting"
-  ],
-  "host_permissions": [
-    "*://*.1point3acres.com/*",
-    "*://*.huaren.us/*",
-    "*://*.baidu.com/*",
-    "*://*.bilibili.com/*",
-    "*://*.zombsroyale.io/*",
-    "*://llm.jimchen.me/*",
-    "https://aistudio.google.com/*"
+    "declarativeNetRequestWithHostAccess"
   ],
   "optional_host_permissions": [
     "http://*/*",
