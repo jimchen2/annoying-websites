@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Annoying Websites",
+  "version": "2.0.0",
+  "description": "Pause before browsing distracting websites. Sync your website list and timer settings with Chrome.",
+  "author": "Jim Chen",
+  "minimum_chrome_version": "109",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.1point3acres.com/*",
+    "*://*.huaren.us/*",
+    "*://*.baidu.com/*",
+    "*://*.bilibili.com/*",
+    "*://*.zombsroyale.io/*",
+    "*://llm.jimchen.me/*",
+    "https://aistudio.google.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Annoying Websites",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none';"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA32feihIH1GXNSim1TkYpF0+TZcQwTq/rjV+cRTOnBT3+Je2ZOJfIOx9Vk/iI0p4m06FDn/9PThhiSvtbJvCEN7n4baziTjsPMYE/IXjonSWt8XT5soi7ueLxGt4okOWRPUrdXk7OqP8DoWNSjQFD22QlzXPGYvNvQ1F4I2I7XdsN/iY0CSmNVJxNhYKgAgWr53mfDHzMwJTZIgW/lILOw5O+Sc2jhUShqt2eWMAGzeYqcGZcVGLrspogj8SsCcM1NRea1ya02c/QdQOwZAxCPGjgCQFaBg6ymQmrSh1aB4DEspxVwvKkFIkT86LEXGaRqqtGxX5KSPm0cfG9VfMzwwIDAQAB"
+}

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Settings · Annoying Websites</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="ui.css">
+  <script src="shared.js" defer></script>
+  <script src="options.js" defer></script>
+</head>
+<body class="options-page">
+  <main class="settings-shell">
+    <header class="brand-header">
+      <div class="brand-lockup"><img src="icons/icon48.png" width="42" height="42" alt=""><div><div class="brand-name">Annoying Websites</div><div class="brand-caption">A little friction. A more intentional day.</div></div></div>
+      <span class="sync-pill"><span class="sync-dot"></span>Chrome Sync</span>
+    </header>
+    <section class="page-intro"><p class="eyebrow">YOUR BROWSING, ON PURPOSE</p><h1>Make room for a pause.</h1><p>Choose the websites that interrupt your focus. Take a breath before you go back.</p></section>
+
+    <form id="settings-form" novalidate>
+      <fieldset id="settings-fields" disabled>
+        <section class="card enabled-card">
+          <div><h2>Reminders</h2><p>Start each matching page with a pause, then repeat while you browse.</p></div>
+          <label class="switch"><input id="enabled" type="checkbox" aria-label="Enable reminders"><span class="switch-track"></span></label>
+        </section>
+
+        <section class="card">
+          <div class="section-heading"><span class="section-number">01</span><div><h2>Set the rhythm</h2><p>The original script's 90-second interval and 30-second pause are the defaults.</p></div></div>
+          <div class="timing-grid">
+            <div class="field"><label for="interval-minutes">Browsing interval</label><div class="input-unit"><input id="interval-minutes" type="number" min="0.1" max="1440" step="0.1" inputmode="decimal" required><span>minutes</span></div><p class="help">Time until the next reminder after you continue.</p></div>
+            <div class="field"><label for="wait-seconds">Pause duration</label><div class="input-unit"><input id="wait-seconds" type="number" min="1" max="3600" step="1" inputmode="numeric" required><span>seconds</span></div><p class="help">Both action buttons appear after this countdown.</p></div>
+          </div>
+          <label class="checkbox-row"><input id="console-timer" type="checkbox"><span>Show the browsing countdown in the website's developer console</span></label>
+        </section>
+
+        <section class="card">
+          <div class="section-heading"><span class="section-number">02</span><div class="grow"><h2>Choose your websites</h2><p>One domain or Chrome match pattern per line. Blank lines and # comments are ignored.</p></div><span id="site-count" class="count-pill">7 patterns</span></div>
+          <label for="websites" class="sr-only">Website list</label>
+          <textarea id="websites" rows="9" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="website-help"></textarea>
+          <div class="pattern-guide" id="website-help"><p><code>example.com</code> includes the domain and its subdomains.</p><p><code>*://llm.jimchen.me/random*</code> limits reminders to a path.</p><p><code>https://aistudio.google.com/*</code> matches that exact HTTPS host.</p></div>
+          <div id="permission-note" class="notice warning" hidden></div>
+          <p class="help permission-help">New websites need your permission on each computer. Chrome will ask when you save. Removing a line stops reminders there; Chrome's extension settings control site-access permissions.</p>
+        </section>
+      </fieldset>
+
+      <div class="save-bar"><div id="save-status" class="status-text" role="status" aria-live="polite">Loading settings…</div><div class="save-actions"><button id="restore-defaults" class="button button-quiet" type="button" disabled>Restore defaults</button><button id="save-button" class="button button-primary" type="submit" disabled>Save settings <span aria-hidden="true">↗</span></button></div></div>
+    </form>
+
+    <aside class="footnote"><span class="footnote-icon" aria-hidden="true">↔</span><p><strong>Your settings travel with you.</strong> Websites, timing, and toggles are stored in <code>chrome.storage.sync</code>. They sync to Chrome profiles with extension sync enabled. Countdowns stay independent in each tab. No analytics or extension-run servers.</p></aside>
+    <footer class="page-footer"><span>PAUSE FIRST. CHOOSE WELL.</span><span>v2.0.0 · Based on Jim Chen's userscript</span></footer>
+  </main>
+</body>
+</html>
