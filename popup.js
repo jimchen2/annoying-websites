@@ -104,7 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // immediately so the website persists even if Chrome's prompt closes the popup.
     let permPromise;
     try {
-      permPromise = chrome.permissions.request({ origins: [Config.originForPattern(pattern)] });
+      permPromise = chrome.permissions.request({ origins: Config.permissionOriginsForPattern(pattern) });
     } catch (error) {
       showError(error.message || String(error));
       return;
@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   grantBtn.addEventListener("click", async () => {
     showError("");
-    const origins = [...new Set(missingWebsites.map(Config.originForPattern))];
+    const origins = [...new Set(missingWebsites.flatMap(Config.permissionOriginsForPattern))];
     if (!origins.length) return;
     let permPromise;
     try {
