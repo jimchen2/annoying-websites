@@ -13,7 +13,6 @@
       "*://*.baidu.com/*",
       "*://*.bilibili.com/*",
       "*://*.zombsroyale.io/*",
-      "*://llm.jimchen.me/random*",
       "*://aistudio.google.com/*"
     ])
   });

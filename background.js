@@ -3,7 +3,24 @@
 importScripts("shared.js");
 const Config = globalThis.AnnoyConfig;
 const SCRIPT_ID = "annoying-websites-content-v2";
+const MIGRATION_KEY = "migration_removed_llm_random";
 let workQueue = Promise.resolve();
+
+// One-time cleanup: llm.jimchen.me/random is no longer a default website. Strip
+// it from synced settings so the removal applies to existing installs too.
+// Guarded by a flag so the user can re-add it later on purpose.
+async function migrateSettings() {
+  const { [MIGRATION_KEY]: done } = await chrome.storage.local.get(MIGRATION_KEY);
+  if (done) return;
+  const stored = await chrome.storage.sync.get(Config.KEYS);
+  if (Array.isArray(stored.websites)) {
+    const filtered = stored.websites.filter(pattern => !/^\*:\/\/llm\.jimchen\.me\/random/.test(String(pattern)));
+    if (filtered.length !== stored.websites.length) {
+      await chrome.storage.sync.set({ websites: filtered });
+    }
+  }
+  await chrome.storage.local.set({ [MIGRATION_KEY]: true });
+}
 
 async function ensureDefaults() {
   const stored = await chrome.storage.sync.get(Config.KEYS);
@@ -94,6 +111,7 @@ function scheduleReconcile() {
 }
 
 async function initialize() {
+  await migrateSettings().catch(error => console.error("[Annoy] Migration failed:", error));
   await ensureDefaults();
   await scheduleReconcile();
 }

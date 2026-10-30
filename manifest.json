@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Annoying Websites",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Pause before browsing distracting websites.",
   "author": "Jim Chen",
   "minimum_chrome_version": "109",
@@ -15,7 +15,6 @@
     "*://*.baidu.com/*",
     "*://*.bilibili.com/*",
     "*://*.zombsroyale.io/*",
-    "*://llm.jimchen.me/*",
     "*://aistudio.google.com/*"
   ],
   "optional_host_permissions": [

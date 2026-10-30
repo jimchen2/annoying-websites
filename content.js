@@ -116,6 +116,15 @@
     message.style.fontWeight = "700";
     message.style.fontFamily = "Arial, sans-serif";
 
+    const subtitle = element("p", "", "You should be working, or just go for a walk");
+    subtitle.style.margin = "0 0 30px";
+    subtitle.style.padding = "0 20px";
+    subtitle.style.fontSize = "16px";
+    subtitle.style.fontStyle = "italic";
+    subtitle.style.lineHeight = "1.4";
+    subtitle.style.color = "#bfbfbf";
+    subtitle.style.fontFamily = "Arial, sans-serif";
+
     display = document.createElement("div");
     display.id = "prod-timer";
     display.style.fontSize = "48px";
@@ -169,7 +178,7 @@
 
     actions.append(closeButton, continueButton);
 
-    host.append(message, display, actions, errorMessage);
+    host.append(message, subtitle, display, actions, errorMessage);
     (document.body || document.documentElement).appendChild(host);
 
     tick();
