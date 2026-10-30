@@ -42,6 +42,5 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none';"
-  },
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA32feihIH1GXNSim1TkYpF0+TZcQwTq/rjV+cRTOnBT3+Je2ZOJfIOx9Vk/iI0p4m06FDn/9PThhiSvtbJvCEN7n4baziTjsPMYE/IXjonSWt8XT5soi7ueLxGt4okOWRPUrdXk7OqP8DoWNSjQFD22QlzXPGYvNvQ1F4I2I7XdsN/iY0CSmNVJxNhYKgAgWr53mfDHzMwJTZIgW/lILOw5O+Sc2jhUShqt2eWMAGzeYqcGZcVGLrspogj8SsCcM1NRea1ya02c/QdQOwZAxCPGjgCQFaBg6ymQmrSh1aB4DEspxVwvKkFIkT86LEXGaRqqtGxX5KSPm0cfG9VfMzwwIDAQAB"
+  }
 }
